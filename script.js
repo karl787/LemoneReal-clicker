@@ -1,23 +1,33 @@
 // Firebase Configuration - Replace with your own Firebase config
-const firebaseConfig = {
-    apiKey: "AIzaSyB7OYzQ4P6KVV3-vP8WxOcX9N8kF5dXUzM",
-    authDomain: "lemon-clicker-demo.firebaseapp.com",
-    databaseURL: "https://lemon-clicker-demo-default-rtdb.firebaseio.com",
-    projectId: "lemon-clicker-demo",
-    storageBucket: "lemon-clicker-demo.appspot.com",
-    messagingSenderId: "123456789012",
-    appId: "1:123456789012:web:abcdef123456"
-};
+// SAFE VERSION: Only uses Firebase if properly configured
+let database = null;
+let firebaseAvailable = false;
 
-// Initialize Firebase
-let database;
-try {
-    firebase.initializeApp(firebaseConfig);
-    database = firebase.database();
-    console.log("🔥 Firebase connected successfully!");
-} catch (error) {
-    console.warn("🔥 Firebase connection failed, using fallback mode:", error);
-    database = null;
+// Check if Firebase scripts are loaded AND properly configured
+if (typeof firebase !== 'undefined') {
+    try {
+        // Check if config exists and has real-looking values (not demo data)
+        if (window.firebaseConfig && 
+            window.firebaseConfig.apiKey && 
+            window.firebaseConfig.apiKey !== 'your_api_key_here' &&
+            !window.firebaseConfig.apiKey.includes('demo')) {
+            
+            firebase.initializeApp(window.firebaseConfig);
+            database = firebase.database();
+            firebaseAvailable = true;
+            console.log("🔥 Firebase connected successfully!");
+        } else {
+            console.log("💾 Firebase config not set up, using offline mode");
+            firebaseAvailable = false;
+        }
+    } catch (error) {
+        console.warn("💾 Firebase failed, using offline mode:", error);
+        database = null;
+        firebaseAvailable = false;
+    }
+} else {
+    console.log("💾 Firebase SDK not loaded, using offline mode");
+    firebaseAvailable = false;
 }
 
 class LemonClickerSecure {
@@ -29,7 +39,7 @@ class LemonClickerSecure {
         this.checkInterval = null;
         this.leaderboard = [];
         this.currentUser = '';
-        this.isOnline = !!database;
+        this.isOnline = firebaseAvailable;
         this.updateTimer = null;
         this.lastUpdate = 0;
         
@@ -66,20 +76,24 @@ class LemonClickerSecure {
         leaderboardTitle.innerHTML = `🏆 Top 100 Leaderboard ${statusIcon} <small style="color: ${statusColor}; font-size: 0.7em;">(${statusText})</small>`;
     }
 
-    async initializeLeaderboard() {
-        if (this.isOnline) {
-            try {
-                // Load leaderboard from Firebase
-                await this.loadLeaderboardFromFirebase();
+    initializeLeaderboard() {
+        // Always start with localStorage (guaranteed to work)
+        this.leaderboard = JSON.parse(localStorage.getItem('lemonLeaderboard')) || [];
+        
+        // If online, try to sync with Firebase
+        if (this.isOnline && firebaseAvailable) {
+            this.loadLeaderboardFromFirebase().then(() => {
                 this.showMessage('🌐 Connected to online leaderboard!');
-            } catch (error) {
+                this.renderLeaderboard();
+            }).catch(error => {
                 console.warn('Failed to load online leaderboard:', error);
-                this.fallbackToLocalStorage();
-            }
+                this.showMessage('💾 Using offline leaderboard');
+                this.renderLeaderboard();
+            });
         } else {
-            this.fallbackToLocalStorage();
+            this.showMessage('💾 Using offline leaderboard');
+            this.renderLeaderboard();
         }
-        this.renderLeaderboard();
     }
 
     async loadLeaderboardFromFirebase() {
@@ -96,12 +110,7 @@ class LemonClickerSecure {
         });
     }
 
-    fallbackToLocalStorage() {
-        this.leaderboard = JSON.parse(localStorage.getItem('lemonLeaderboard')) || [];
-        this.isOnline = false;
-        this.addOnlineStatusIndicator();
-        this.showMessage('💾 Using offline leaderboard');
-    }
+
 
     startAutoUpdate() {
         if (!this.isOnline) return;
@@ -281,7 +290,7 @@ class LemonClickerSecure {
         }
     }
 
-    async saveScore() {
+    saveScore() {
         const username = this.usernameInput.value.trim();
         
         if (!username) {
@@ -294,6 +303,8 @@ class LemonClickerSecure {
             return;
         }
 
+        console.log("🔄 Saving score:", username, this.clickCount);
+
         // Create score entry
         const scoreEntry = {
             name: username,
@@ -303,18 +314,27 @@ class LemonClickerSecure {
             id: `${username}_${Date.now()}`
         };
 
-        try {
-            if (this.isOnline) {
-                await this.saveToFirebase(scoreEntry);
-                this.showMessage(`🌐 Score saved online for ${username}! Score: ${this.clickCount}`);
-            } else {
-                this.saveToLocalStorage(scoreEntry);
-                this.showMessage(`💾 Score saved locally for ${username}! Score: ${this.clickCount}`);
+        // ALWAYS save to localStorage first (guaranteed to work)
+        const savedToLocal = this.saveToLocalStorage(scoreEntry);
+        
+        if (savedToLocal) {
+            console.log("✅ Score saved to localStorage");
+            this.showMessage(`💾 Score saved for ${username}! Score: ${this.clickCount}`);
+            
+            // Try Firebase only if online AND local save worked
+            if (this.isOnline && firebaseAvailable) {
+                this.saveToFirebase(scoreEntry).then(() => {
+                    console.log("✅ Score also saved to Firebase");
+                    this.showMessage(`🌐 Score synchronized online for ${username}!`);
+                }).catch(error => {
+                    console.warn("⚠️ Firebase save failed:", error);
+                    // Don't show error to user since local save worked
+                });
             }
             
-            this.resetGameOnly(); // Only reset the game, NOT the leaderboard!
-        } catch (error) {
-            console.error('Error saving score:', error);
+            this.resetGameOnly();
+        } else {
+            console.log("❌ Local save failed");
             this.showMessage('❌ Error saving score. Please try again.');
         }
     }
@@ -357,30 +377,36 @@ class LemonClickerSecure {
     }
 
     saveToLocalStorage(scoreEntry) {
-        // Check if user already exists with a higher score
-        const existingUserIndex = this.leaderboard.findIndex(entry => 
-            entry.name.toLowerCase() === scoreEntry.name.toLowerCase()
-        );
-        
-        if (existingUserIndex !== -1) {
-            if (scoreEntry.score <= this.leaderboard[existingUserIndex].score) {
-                this.showMessage(`ℹ️ ${scoreEntry.name} already has a higher score!`);
-                return;
+        try {
+            // Check if user already exists with a higher score
+            const existingUserIndex = this.leaderboard.findIndex(entry => 
+                entry.name.toLowerCase() === scoreEntry.name.toLowerCase()
+            );
+            
+            if (existingUserIndex !== -1) {
+                if (scoreEntry.score <= this.leaderboard[existingUserIndex].score) {
+                    this.showMessage(`ℹ️ ${scoreEntry.name} already has a higher score!`);
+                    return false; // Return false to indicate score was not saved
+                }
+                // Remove old entry
+                this.leaderboard.splice(existingUserIndex, 1);
             }
-            // Remove old entry
-            this.leaderboard.splice(existingUserIndex, 1);
+            
+            // Add new entry
+            this.leaderboard.push(scoreEntry);
+            
+            // Sort and limit to top 100
+            this.leaderboard.sort((a, b) => b.score - a.score);
+            this.leaderboard = this.leaderboard.slice(0, 100);
+            
+            // Save to localStorage
+            localStorage.setItem('lemonLeaderboard', JSON.stringify(this.leaderboard));
+            this.renderLeaderboard();
+            return true; // Return true to indicate success
+        } catch (error) {
+            console.error('LocalStorage save failed:', error);
+            return false;
         }
-        
-        // Add new entry
-        this.leaderboard.push(scoreEntry);
-        
-        // Sort and limit to top 100
-        this.leaderboard.sort((a, b) => b.score - a.score);
-        this.leaderboard = this.leaderboard.slice(0, 100);
-        
-        // Save to localStorage
-        localStorage.setItem('lemonLeaderboard', JSON.stringify(this.leaderboard));
-        this.renderLeaderboard();
     }
 
     renderLeaderboard() {
