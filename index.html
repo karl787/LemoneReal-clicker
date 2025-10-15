@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lemon Clicker v2.0</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🍋 Lemon Clicker 🍋</h1>
+            <div class="youtube-check">
+                <div class="youtube-info">
+                    <p><strong>🎬 Subscribe to @LemoneReal on YouTube!</strong></p>
+                    <p>You must subscribe to the channel to play the game.</p>
+                </div>
+                
+                <div class="youtube-subscribe-container">
+                    <div class="channel-info">
+                        <div class="channel-avatar">
+                            <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzIiIGN5PSIzMiIgcj0iMzIiIGZpbGw9IiNGRkQzMDAiLz4KPHN2ZyB4PSIxNiIgeT0iMTYiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0Ij4KPHN2ZyBmaWxsPSIjRkY2RjAwIiB2aWV3Qm94PSIwIDAgMjQgMjQiPgo8cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptLTIgMTVsLTUtNSAxLjQxLTEuNDFMMTAgMTQuMTdsMTIuNTktMTIuNThMMjQgM2wtMTQgMTR6Ii8+Cjwvc3ZnPgo8L3N2Zz4KPC9zdmc+" alt="LemoneReal" onerror="this.src='https://via.placeholder.com/64x64/FFD700/FF6F00?text=🍋'">
+                        </div>
+                        <div class="channel-details">
+                            <h3>@LemoneReal</h3>
+                            <p>YouTube Channel</p>
+                        </div>
+                    </div>
+                    
+                    <div class="subscribe-widget">
+                        <a href="https://www.youtube.com/@LemoneReal?sub_confirmation=1" 
+                           target="_blank" 
+                           class="subscribe-button" 
+                           id="subscribeButton">
+                            <span class="subscribe-icon">🔔</span>
+                            <span class="subscribe-text">SUBSCRIBE</span>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="verification-section">
+                    <div id="verifyStatus" class="status"></div>
+                    <div id="verificationProgress" class="verification-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill"></div>
+                        </div>
+                        <p>Checking subscription status automatically...</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="game-area">
+                <div class="click-counter">
+                    <h2>Your Clicks: <span id="clickCount">0</span></h2>
+                </div>
+                
+                <div class="lemon-container">
+                    <div id="lemon" class="lemon">
+                        🍋
+                    </div>
+                    <div id="clickEffect" class="click-effect"></div>
+                </div>
+
+                <div class="user-input">
+                    <input type="text" id="username" placeholder="Enter your name" maxlength="20">
+                    <button id="saveScore" class="save-btn">Save Score</button>
+                </div>
+            </div>
+
+            <div class="leaderboard">
+                <h2>🏆 Top 100 Leaderboard 🏆</h2>
+                <!-- NO RESET BUTTON HERE ANYMORE -->
+                <div id="leaderboardList" class="leaderboard-list">
+                    <!-- Leaderboard will be dynamically inserted here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
