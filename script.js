@@ -1,3 +1,25 @@
+// Firebase Configuration - Replace with your own Firebase config
+const firebaseConfig = {
+    apiKey: "AIzaSyB7OYzQ4P6KVV3-vP8WxOcX9N8kF5dXUzM",
+    authDomain: "lemon-clicker-demo.firebaseapp.com",
+    databaseURL: "https://lemon-clicker-demo-default-rtdb.firebaseio.com",
+    projectId: "lemon-clicker-demo",
+    storageBucket: "lemon-clicker-demo.appspot.com",
+    messagingSenderId: "123456789012",
+    appId: "1:123456789012:web:abcdef123456"
+};
+
+// Initialize Firebase
+let database;
+try {
+    firebase.initializeApp(firebaseConfig);
+    database = firebase.database();
+    console.log("🔥 Firebase connected successfully!");
+} catch (error) {
+    console.warn("🔥 Firebase connection failed, using fallback mode:", error);
+    database = null;
+}
+
 class LemonClickerSecure {
     constructor() {
         this.clickCount = 0;
@@ -5,14 +27,18 @@ class LemonClickerSecure {
         this.isVerifying = false;
         this.youtubeWindow = null;
         this.checkInterval = null;
-        this.leaderboard = JSON.parse(localStorage.getItem('lemonLeaderboard')) || [];
+        this.leaderboard = [];
         this.currentUser = '';
+        this.isOnline = !!database;
+        this.updateTimer = null;
+        this.lastUpdate = 0;
         
         this.initElements();
         this.bindEvents();
         this.updateDisplay();
-        this.renderLeaderboard();
+        this.initializeLeaderboard();
         this.setupWindowFocusDetection();
+        this.startAutoUpdate();
     }
 
     initElements() {
@@ -26,6 +52,75 @@ class LemonClickerSecure {
         this.saveBtn = document.getElementById('saveScore');
         this.leaderboardList = document.getElementById('leaderboardList');
         // NO clearBtn ANYMORE!
+        
+        // Add online status indicator
+        this.addOnlineStatusIndicator();
+    }
+
+    addOnlineStatusIndicator() {
+        const leaderboardTitle = document.querySelector('.leaderboard h2');
+        const statusIcon = this.isOnline ? '🌐' : '💾';
+        const statusText = this.isOnline ? 'Online' : 'Offline';
+        const statusColor = this.isOnline ? '#4caf50' : '#ff9800';
+        
+        leaderboardTitle.innerHTML = `🏆 Top 100 Leaderboard ${statusIcon} <small style="color: ${statusColor}; font-size: 0.7em;">(${statusText})</small>`;
+    }
+
+    async initializeLeaderboard() {
+        if (this.isOnline) {
+            try {
+                // Load leaderboard from Firebase
+                await this.loadLeaderboardFromFirebase();
+                this.showMessage('🌐 Connected to online leaderboard!');
+            } catch (error) {
+                console.warn('Failed to load online leaderboard:', error);
+                this.fallbackToLocalStorage();
+            }
+        } else {
+            this.fallbackToLocalStorage();
+        }
+        this.renderLeaderboard();
+    }
+
+    async loadLeaderboardFromFirebase() {
+        return new Promise((resolve, reject) => {
+            database.ref('leaderboard').once('value')
+                .then((snapshot) => {
+                    const data = snapshot.val();
+                    this.leaderboard = data ? Object.values(data) : [];
+                    this.leaderboard.sort((a, b) => b.score - a.score);
+                    this.lastUpdate = Date.now();
+                    resolve();
+                })
+                .catch(reject);
+        });
+    }
+
+    fallbackToLocalStorage() {
+        this.leaderboard = JSON.parse(localStorage.getItem('lemonLeaderboard')) || [];
+        this.isOnline = false;
+        this.addOnlineStatusIndicator();
+        this.showMessage('💾 Using offline leaderboard');
+    }
+
+    startAutoUpdate() {
+        if (!this.isOnline) return;
+        
+        // Update every 10 seconds
+        this.updateTimer = setInterval(async () => {
+            try {
+                const oldLength = this.leaderboard.length;
+                await this.loadLeaderboardFromFirebase();
+                this.renderLeaderboard();
+                
+                // Show notification if new entries were added
+                if (this.leaderboard.length > oldLength) {
+                    this.showMessage('🆕 Leaderboard updated! New scores available.');
+                }
+            } catch (error) {
+                console.warn('Auto-update failed:', error);
+            }
+        }, 10000); // 10 seconds
     }
 
     bindEvents() {
@@ -186,7 +281,7 @@ class LemonClickerSecure {
         }
     }
 
-    saveScore() {
+    async saveScore() {
         const username = this.usernameInput.value.trim();
         
         if (!username) {
@@ -199,43 +294,101 @@ class LemonClickerSecure {
             return;
         }
 
-        // Check if the user already exists
-        const existingUserIndex = this.leaderboard.findIndex(entry => entry.name === username);
+        // Create score entry
+        const scoreEntry = {
+            name: username,
+            score: this.clickCount,
+            date: new Date().toLocaleDateString('en-US'),
+            timestamp: Date.now(),
+            id: `${username}_${Date.now()}`
+        };
+
+        try {
+            if (this.isOnline) {
+                await this.saveToFirebase(scoreEntry);
+                this.showMessage(`🌐 Score saved online for ${username}! Score: ${this.clickCount}`);
+            } else {
+                this.saveToLocalStorage(scoreEntry);
+                this.showMessage(`💾 Score saved locally for ${username}! Score: ${this.clickCount}`);
+            }
+            
+            this.resetGameOnly(); // Only reset the game, NOT the leaderboard!
+        } catch (error) {
+            console.error('Error saving score:', error);
+            this.showMessage('❌ Error saving score. Please try again.');
+        }
+    }
+
+    async saveToFirebase(scoreEntry) {
+        // First, reload current leaderboard to check for conflicts
+        await this.loadLeaderboardFromFirebase();
+        
+        // Check if user already exists with a higher score
+        const existingUserIndex = this.leaderboard.findIndex(entry => 
+            entry.name.toLowerCase() === scoreEntry.name.toLowerCase()
+        );
         
         if (existingUserIndex !== -1) {
-            // Update existing user if new score is higher
-            if (this.clickCount > this.leaderboard[existingUserIndex].score) {
-                this.leaderboard[existingUserIndex].score = this.clickCount;
-                this.leaderboard[existingUserIndex].date = new Date().toLocaleDateString('en-US');
-                this.showMessage(`🎉 New record for ${username}! Score: ${this.clickCount}`);
-            } else {
-                this.showMessage(`ℹ️ ${username} already has a higher score!`);
+            if (scoreEntry.score <= this.leaderboard[existingUserIndex].score) {
+                throw new Error(`${scoreEntry.name} already has a higher score!`);
+            }
+            // Remove old entry
+            this.leaderboard.splice(existingUserIndex, 1);
+        }
+        
+        // Add new entry
+        this.leaderboard.push(scoreEntry);
+        
+        // Sort and limit to top 100
+        this.leaderboard.sort((a, b) => b.score - a.score);
+        this.leaderboard = this.leaderboard.slice(0, 100);
+        
+        // Save to Firebase
+        const leaderboardData = {};
+        this.leaderboard.forEach((entry, index) => {
+            leaderboardData[entry.id] = entry;
+        });
+        
+        await database.ref('leaderboard').set(leaderboardData);
+        this.renderLeaderboard();
+        
+        // Also save backup to localStorage
+        localStorage.setItem('lemonLeaderboard', JSON.stringify(this.leaderboard));
+    }
+
+    saveToLocalStorage(scoreEntry) {
+        // Check if user already exists with a higher score
+        const existingUserIndex = this.leaderboard.findIndex(entry => 
+            entry.name.toLowerCase() === scoreEntry.name.toLowerCase()
+        );
+        
+        if (existingUserIndex !== -1) {
+            if (scoreEntry.score <= this.leaderboard[existingUserIndex].score) {
+                this.showMessage(`ℹ️ ${scoreEntry.name} already has a higher score!`);
                 return;
             }
-        } else {
-            // Add new user
-            this.leaderboard.push({
-                name: username,
-                score: this.clickCount,
-                date: new Date().toLocaleDateString('en-US')
-            });
-            this.showMessage(`✅ Score saved for ${username}! Score: ${this.clickCount}`);
+            // Remove old entry
+            this.leaderboard.splice(existingUserIndex, 1);
         }
-
-        // Sort leaderboard by score (descending) and keep only top 100
+        
+        // Add new entry
+        this.leaderboard.push(scoreEntry);
+        
+        // Sort and limit to top 100
         this.leaderboard.sort((a, b) => b.score - a.score);
         this.leaderboard = this.leaderboard.slice(0, 100);
         
         // Save to localStorage
         localStorage.setItem('lemonLeaderboard', JSON.stringify(this.leaderboard));
-        
         this.renderLeaderboard();
-        this.resetGameOnly(); // Only reset the game, NOT the leaderboard!
     }
 
     renderLeaderboard() {
         if (this.leaderboard.length === 0) {
-            this.leaderboardList.innerHTML = '<div class="empty-leaderboard">No entries yet.<br>Be the first!</div>';
+            const emptyMessage = this.isOnline ? 
+                'No entries yet.<br>Be the first to score online! 🌐' : 
+                'No entries yet.<br>Be the first!';
+            this.leaderboardList.innerHTML = `<div class="empty-leaderboard">${emptyMessage}</div>`;
             return;
         }
 
@@ -255,16 +408,36 @@ class LemonClickerSecure {
                 medal = '🥉 ';
             }
             
+            // Show if entry is recent (within last minute for online mode)
+            const isRecent = this.isOnline && entry.timestamp && 
+                             (Date.now() - entry.timestamp) < 60000;
+            const recentBadge = isRecent ? ' <span style="color: #4caf50; font-size: 0.8em;">🆕</span>' : '';
+            
             return `
                 <div class="leaderboard-entry ${rankClass}">
                     <span class="rank">${medal}${rank}</span>
-                    <span class="name">${this.escapeHtml(entry.name)}</span>
+                    <span class="name">${this.escapeHtml(entry.name)}${recentBadge}</span>
                     <span class="score">${entry.score.toLocaleString()} 🍋</span>
                 </div>
             `;
         }).join('');
         
         this.leaderboardList.innerHTML = html;
+        
+        // Update last update time display
+        if (this.isOnline && this.lastUpdate) {
+            const timeAgo = Math.floor((Date.now() - this.lastUpdate) / 1000);
+            const updateInfo = document.querySelector('.leaderboard-update-info');
+            if (updateInfo) {
+                updateInfo.remove();
+            }
+            
+            const infoEl = document.createElement('div');
+            infoEl.className = 'leaderboard-update-info';
+            infoEl.style.cssText = 'text-align: center; font-size: 0.8em; color: #666; margin-top: 10px;';
+            infoEl.textContent = `Last updated: ${timeAgo}s ago`;
+            this.leaderboardList.parentNode.appendChild(infoEl);
+        }
     }
 
     checkAdminCode(event) {
@@ -279,12 +452,36 @@ class LemonClickerSecure {
         }
     }
 
-    performAdminReset() {
+    async performAdminReset() {
         // ONLY this function can reset the leaderboard!
-        this.leaderboard = [];
-        localStorage.removeItem('lemonLeaderboard');
-        this.renderLeaderboard();
-        this.showMessage('🔧 Admin reset performed! Leaderboard has been reset.');
+        try {
+            this.leaderboard = [];
+            
+            if (this.isOnline) {
+                // Clear Firebase leaderboard
+                await database.ref('leaderboard').remove();
+                this.showMessage('🔧 Admin reset performed! Online leaderboard has been reset.');
+            } else {
+                this.showMessage('🔧 Admin reset performed! Local leaderboard has been reset.');
+            }
+            
+            // Always clear localStorage backup
+            localStorage.removeItem('lemonLeaderboard');
+            this.renderLeaderboard();
+        } catch (error) {
+            console.error('Error during admin reset:', error);
+            this.showMessage('❌ Error during reset. Please try again.');
+        }
+    }
+
+    // Cleanup method to stop timers when page is unloaded
+    cleanup() {
+        if (this.updateTimer) {
+            clearInterval(this.updateTimer);
+        }
+        if (this.checkInterval) {
+            clearInterval(this.checkInterval);
+        }
     }
 
     resetGameOnly() {
@@ -336,6 +533,33 @@ class LemonClickerSecure {
 }
 
 // Initialize the game
+let gameInstance;
 document.addEventListener('DOMContentLoaded', () => {
-    new LemonClickerSecure();
+    gameInstance = new LemonClickerSecure();
+});
+
+// Cleanup when page is unloaded
+window.addEventListener('beforeunload', () => {
+    if (gameInstance) {
+        gameInstance.cleanup();
+    }
+});
+
+// Handle visibility change to pause/resume auto-updates
+document.addEventListener('visibilitychange', () => {
+    if (gameInstance && gameInstance.isOnline) {
+        if (document.hidden) {
+            // Page is hidden, you might want to reduce update frequency
+            console.log('🔍 Page hidden, maintaining background updates');
+        } else {
+            // Page is visible again, ensure updates are running
+            console.log('👁️ Page visible, resuming normal updates');
+            // Immediately check for updates when page becomes visible
+            if (gameInstance.loadLeaderboardFromFirebase) {
+                gameInstance.loadLeaderboardFromFirebase().then(() => {
+                    gameInstance.renderLeaderboard();
+                });
+            }
+        }
+    }
 });
