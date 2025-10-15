@@ -479,3 +479,9 @@ main {
 .leaderboard-list::-webkit-scrollbar-thumb:hover {
     background: #f57f17;
 }
+    border-radius: 4px;
+}
+
+.leaderboard-list::-webkit-scrollbar-thumb:hover {
+    background: #f57f17;
+}
