@@ -85,17 +85,24 @@
 
     <!-- Firebase Configuration (add your own config here for online features) -->
     <script>
-        // ADD YOUR FIREBASE CONFIG HERE FOR ONLINE FEATURES
-        // Uncomment and fill in your real Firebase configuration:
-        // window.firebaseConfig = {
-        //     apiKey: "AIzaSyBDr0PPbcRQXQuNifBxju9uBec6JKF6lrw",
-        //     authDomain: "lemonereal-clicker.firebaseapp.com",
-        //     databaseURL: "https://lemonereal-clicker-default-rtdb.europe-west1.firebasedatabase.app",
-        //     projectId: "lemonereal-clicker",
-        //     storageBucket: "lemonereal-clicker.firebasestorage.app",
-        //     messagingSenderId: "162170368401",
-        //     appId: "1:162170368401:web:e3b37fec07f56c00b9ea30"
-        // };
+       // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBDr0PPbcRQXQuNifBxju9uBec6JKF6lrw",
+  authDomain: "lemonereal-clicker.firebaseapp.com",
+  databaseURL: "https://lemonereal-clicker-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "lemonereal-clicker",
+  storageBucket: "lemonereal-clicker.firebasestorage.app",
+  messagingSenderId: "162170368401",
+  appId: "1:162170368401:web:e3b37fec07f56c00b9ea30"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
     </script>
     
     <script src="script.js"></script>
